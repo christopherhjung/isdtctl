@@ -5,9 +5,9 @@
 //! are built on this one and have no privileged access; anything they do, you
 //! can do.
 //!
-//! The protocol was reconstructed from the vendor's Android application and
-//! verified against a CM1620. Where the application leaves something
-//! undefined, the documentation says so rather than guessing.
+//! Verified against a CM1620; other ISDT chargers share the command set. Where
+//! a field's meaning is not established, the documentation says so rather than
+//! guessing.
 //!
 //! # The short version
 //!
@@ -89,7 +89,7 @@
 //! [`Client::start_task`] puts current through a battery. The calibration and
 //! firmware calls change persistent device state, and an interrupted firmware
 //! write can leave a charger unbootable. Nothing here second-guesses a
-//! request. The bounds the vendor application enforces are exposed in
+//! request. The bounds a charger's own interface enforces are exposed in
 //! [`types`] as [`types::WORK_CURRENT_MA`] and friends, but they are advisory.
 
 #![warn(missing_docs)]

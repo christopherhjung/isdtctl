@@ -5,7 +5,7 @@
 //! ```
 //!
 //! Scans for chargers, binds them, and keeps as many connected at once as you
-//! like. Client identifiers are shared with `isdtctl`, so a charger bound in
+//! like. Client identifiers are shared with `isdtcli`, so a charger bound in
 //! either place is known to both.
 
 mod backend;
@@ -16,8 +16,8 @@ use std::time::Duration;
 use api::{BatteryKind, ChargerState, TaskType};
 use futures::StreamExt;
 use gpui::{
-    div, prelude::*, px, size, App, Application, Bounds, Context, ElementId, SharedString, Window,
-    WindowBounds, WindowOptions,
+    actions, div, prelude::*, px, size, App, Application, Bounds, Context, ElementId, FocusHandle,
+    KeyBinding, SharedString, Window, WindowBounds, WindowOptions,
 };
 
 use backend::{Backend, Command, DeviceId, Found, Reading, Status, TaskCommand, Update};
@@ -36,6 +36,8 @@ const CHEMISTRIES: [BatteryKind; 4] = [
     BatteryKind::LiFe,
     BatteryKind::ULiHv,
 ];
+
+actions!(isdtgui, [CloseWindow]);
 
 /// One charger the window is following.
 struct Device {
@@ -80,6 +82,8 @@ impl Device {
 
 /// Everything the window draws.
 struct ChargerWindow {
+    /// Held so the window can receive key bindings such as cmd-w.
+    focus: FocusHandle,
     backend: Backend,
     devices: Vec<Device>,
     selected: usize,
@@ -123,6 +127,7 @@ impl ChargerWindow {
         backend.send(Command::Scan);
 
         Self {
+            focus: cx.focus_handle(),
             backend,
             devices: Vec::new(),
             selected: 0,
@@ -244,6 +249,8 @@ impl Render for ChargerWindow {
         };
 
         div()
+            .track_focus(&self.focus)
+            .on_action(|_: &CloseWindow, window, _| window.remove_window())
             .flex()
             .flex_col()
             .size_full()
@@ -1003,6 +1010,18 @@ fn main() {
     let (backend, updates) = backend::start(POLL_INTERVAL);
 
     Application::new().run(move |cx: &mut App| {
+        cx.bind_keys([KeyBinding::new("cmd-w", CloseWindow, None)]);
+
+        // Closing the last window leaves a macOS application running by
+        // default. This is a single-window tool, so closing it should end the
+        // process and with it the Bluetooth connections.
+        cx.on_window_closed(|cx| {
+            if cx.windows().is_empty() {
+                cx.quit();
+            }
+        })
+        .detach();
+
         let bounds = Bounds::centered(None, size(px(560.), px(800.)), cx);
         cx.open_window(
             WindowOptions {
@@ -1013,7 +1032,13 @@ fn main() {
                 }),
                 ..Default::default()
             },
-            |_, cx| cx.new(|cx| ChargerWindow::new(backend, updates, cx)),
+            |window, cx| {
+                cx.new(|cx| {
+                    let this = ChargerWindow::new(backend, updates, cx);
+                    this.focus.focus(window);
+                    this
+                })
+            },
         )
         .expect("the window should open");
         cx.activate(true);

@@ -32,7 +32,7 @@ Three crates, so the backend is usable without either front end.
 | Crate | What it is |
 |---|---|
 | [`api`](crates/api) | The backend: wire protocol, Bluetooth link, and a client generic over the transport |
-| [`cli`](crates/cli) | The command line tool `isdtctl` |
+| [`cli`](crates/cli) | The command line tool `isdtcli` |
 | [`gui`](crates/gui) | A desktop window `isdtgui`, built on gpui. Finds and binds chargers, and follows several at once |
 
 Neither front end has privileged access to the backend. Anything they do, your
@@ -52,7 +52,7 @@ Prebuilt archives for each release are on the
 | Linux | x86-64 and arm64 |
 | Windows | x86-64 and arm64 |
 
-Each archive holds `isdtctl`, `isdtgui` where it built, the documentation and
+Each archive holds `isdtcli`, `isdtgui` where it built, the documentation and
 a `.sha256` beside it. The window is best effort outside macOS; when it did not
 build for a platform the archive says so instead of quietly omitting it.
 
@@ -62,7 +62,7 @@ build for a platform the archive says so instead of quietly omitting it.
 cargo build --release
 ```
 
-The binaries land at `target/release/isdtctl` and `target/release/isdtgui`.
+The binaries land at `target/release/isdtcli` and `target/release/isdtgui`.
 
 On macOS the programs need Bluetooth permission. Grant it to your terminal
 under System Settings, Privacy and Security, Bluetooth. Without it the system
@@ -83,9 +83,9 @@ back on every later connection.
 Put the charger into binding mode from its own menu, then:
 
 ```
-isdtctl scan                  # the BINDING column shows "waiting"
-isdtctl -d <address> bind     # generates, binds, and saves the identifier
-isdtctl tokens                # what this host has stored
+isdtcli scan                  # the BINDING column shows "waiting"
+isdtcli -d <address> bind     # generates, binds, and saves the identifier
+isdtcli tokens                # what this host has stored
 ```
 
 Identifiers live in `~/.config/isdtctl/tokens`, shared with the window.
@@ -96,19 +96,19 @@ supplies one from elsewhere.
 ## Command line
 
 ```
-isdtctl scan
-isdtctl info
-isdtctl status
-isdtctl watch --interval 200
+isdtcli scan
+isdtcli info
+isdtcli status
+isdtcli watch --interval 200
 ```
 
 Start and stop tasks:
 
 ```
-isdtctl charge --battery lipo --cells 4 --current-ma 2000
-isdtctl storage --battery lipo --cells 4 --current-ma 1000
-isdtctl discharge --battery lipo --cells 4 --current-ma 1000
-isdtctl stop
+isdtcli charge --battery lipo --cells 4 --current-ma 2000
+isdtcli storage --battery lipo --cells 4 --current-ma 1000
+isdtcli discharge --battery lipo --cells 4 --current-ma 1000
+isdtcli stop
 ```
 
 Target voltage defaults to the chemistry's own value for the task. Override it
@@ -117,18 +117,18 @@ with `--volt-mv`. Range checks are applied by default and `--force` skips them.
 Settings, smart batteries and power supplies:
 
 ```
-isdtctl limits
-isdtctl limits --min-volt 12 --power 600
-isdtctl onekey --set --enabled --battery lipo --cells 4 --current-ma 2000
-isdtctl name "Bench charger"
-isdtctl battgo state
-isdtctl smartpower info
+isdtcli limits
+isdtcli limits --min-volt 12 --power 600
+isdtcli onekey --set --enabled --battery lipo --cells 4 --current-ma 2000
+isdtcli name "Bench charger"
+isdtcli battgo state
+isdtcli smartpower info
 ```
 
 Anything the tool does not model goes out as raw bytes:
 
 ```
-isdtctl raw "e4 00"
+isdtcli raw "e4 00"
 ```
 
 `--json` gives machine-readable output for every read command.
@@ -139,7 +139,7 @@ Binding and connecting cost a few seconds each time, so for anything
 exploratory open a session instead:
 
 ```
-isdtctl -d <address> shell
+isdtcli -d <address> shell
 ```
 
 It connects once, binds once, and holds the link open. Every command works
@@ -205,7 +205,7 @@ second-guesses a request beyond the range checks noted above.
 
 ### `flash` has never been run against hardware
 
-`isdtctl flash` is the one command that can permanently break a charger, and it
+`isdtcli flash` is the one command that can permanently break a charger, and it
 is the one command nothing here has ever executed on a real device. The frame
 layouts are checked, but the sequence has only ever been reasoned about:
 
@@ -224,7 +224,7 @@ for exactly this reason.
 
 `calibrate` is also untested, though the worst case is milder: wrong
 calibration constants make readings inaccurate, and
-`isdtctl calibrate --restore` puts the factory set back.
+`isdtcli calibrate --restore` puts the factory set back.
 
 Everything else in this README has been exercised against a CM1620.
 
@@ -247,8 +247,8 @@ command set, and a single run tells more than any amount of reading.
 If you have one, bind it and send the output of:
 
 ```
-isdtctl info
-isdtctl --json status
+isdtcli info
+isdtcli --json status
 ```
 
 That is enough to say whether a model works. If something is wrong, these show

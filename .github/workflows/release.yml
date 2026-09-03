@@ -74,7 +74,7 @@ jobs:
           echo "BINDGEN_EXTRA_CLANG_ARGS=-isysroot $(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
 
       # The command line tool is the one that must always ship.
-      - name: Build isdtctl
+      - name: Build isdtcli
         run: cargo build --release --locked -p cli --target ${{ matrix.target }}
 
       # The window pulls in a graphics stack and is best effort outside macOS.
@@ -98,7 +98,7 @@ jobs:
           suffix=""
           [ "${{ runner.os }}" = "Windows" ] && suffix=".exe"
 
-          cp "$bin_dir/isdtctl$suffix" "dist/$stage/"
+          cp "$bin_dir/isdtcli$suffix" "dist/$stage/"
           # The window is best effort outside macOS. Say so in the archive
           # rather than shipping one that quietly lacks it.
           if [ -f "$bin_dir/isdtgui$suffix" ]; then

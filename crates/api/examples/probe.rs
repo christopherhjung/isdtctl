@@ -1,6 +1,6 @@
 //! Reports how far the Bluetooth stack gets on this host.
 //!
-//! Run this first if `isdtctl scan` finds nothing. A hang at the adapter step
+//! Run this first if `isdtcli scan` finds nothing. A hang at the adapter step
 //! means the operating system has not granted this program Bluetooth access.
 
 use std::time::Duration;

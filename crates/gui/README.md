@@ -28,7 +28,7 @@ Binding generates an identifier, stores it, and connects. A charger only
 accepts a new identifier while it is in binding mode, which is set from the
 charger itself.
 
-Identifiers live in the same file `isdtctl` uses, so a charger bound in either
+Identifiers live in the same file `isdtcli` uses, so a charger bound in either
 place is known to both.
 
 ## Several at once

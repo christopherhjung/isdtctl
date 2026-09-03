@@ -129,7 +129,7 @@ impl Store {
             })?;
         }
         let mut text = String::from(
-            "# isdtctl client identifiers.\n\
+            "# ISDT client identifiers.\n\
              # One charger per line: <peripheral id> <32 hex digits>.\n\
              # A charger cannot tell you its token back, so keep this file.\n",
         );

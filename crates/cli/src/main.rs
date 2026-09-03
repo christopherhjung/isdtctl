@@ -1,4 +1,4 @@
-//! `isdtctl`: a command line front end for ISDT chargers over Bluetooth.
+//! `isdtcli`: a command line front end for ISDT chargers over Bluetooth.
 
 use std::time::Duration;
 
@@ -17,10 +17,11 @@ use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "isdtctl",
+    name = "isdtcli",
     about = "Talk to an ISDT charger over Bluetooth Low Energy",
-    long_about = "Speaks the serial protocol the ISDT Android app uses, reimplemented \
-                  from that app's packet classes. Targets the CM1620 and its relatives.",
+    long_about = "Live telemetry, task control and settings for ISDT battery \
+                  chargers over Bluetooth Low Energy. Verified on a CM1620; other \
+                  models share the command set.",
     version
 )]
 struct Cli {
@@ -353,7 +354,7 @@ async fn main() -> Result<()> {
                 "no client identifier known for this charger.\n\
                  A charger disconnects any client that has not bound within about \
                  five seconds, so every command needs one.\n\
-                 Bind it with `isdtctl -d {} bind`, or pass one you already have \
+                 Bind it with `isdtcli -d {} bind`, or pass one you already have \
                  with --client-id.",
                 cli.device.as_deref().unwrap_or(&device.id)
             );
@@ -1016,7 +1017,7 @@ struct ShellLine {
 
 /// How long the session may sit idle before it pokes the charger.
 ///
-/// The Android app polls continuously. Nothing here proves a bound charger
+/// A charger is normally polled continuously. Nothing here proves a bound charger
 /// drops an idle client, but a cheap query costs little and keeps the link
 /// demonstrably alive.
 const KEEPALIVE: Duration = Duration::from_secs(20);
