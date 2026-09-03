@@ -11,7 +11,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "isdt-gui"
+name = "isdtgui"
 path = "src/main.rs"
 
 [dependencies]

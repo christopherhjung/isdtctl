@@ -8,7 +8,7 @@ voltages with internal resistance, and buttons to start a charge, a storage
 task or a discharge.
 
 ```
-isdt-gui
+isdtgui
 ```
 
 ## Finding and binding

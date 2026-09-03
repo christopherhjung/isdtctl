@@ -79,7 +79,7 @@ jobs:
 
       # The window pulls in a graphics stack and is best effort outside macOS.
       # A failure here is reported but does not sink the target.
-      - name: Build isdt-gui
+      - name: Build isdtgui
         id: gui
         if: matrix.gui
         continue-on-error: true
@@ -101,11 +101,11 @@ jobs:
           cp "$bin_dir/isdtctl$suffix" "dist/$stage/"
           # The window is best effort outside macOS. Say so in the archive
           # rather than shipping one that quietly lacks it.
-          if [ -f "$bin_dir/isdt-gui$suffix" ]; then
-            cp "$bin_dir/isdt-gui$suffix" "dist/$stage/"
+          if [ -f "$bin_dir/isdtgui$suffix" ]; then
+            cp "$bin_dir/isdtgui$suffix" "dist/$stage/"
           else
-            echo "isdt-gui did not build for ${{ matrix.target }}." \
-              > "dist/$stage/isdt-gui.MISSING.txt"
+            echo "isdtgui did not build for ${{ matrix.target }}." \
+              > "dist/$stage/isdtgui.MISSING.txt"
           fi
           cp README.md PROTOCOL.md LICENSE "dist/$stage/"
 

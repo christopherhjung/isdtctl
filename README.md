@@ -33,7 +33,7 @@ Three crates, so the backend is usable without either front end.
 |---|---|
 | [`api`](crates/api) | The backend: wire protocol, Bluetooth link, and a client generic over the transport |
 | [`cli`](crates/cli) | The command line tool `isdtctl` |
-| [`gui`](crates/gui) | A desktop window `isdt-gui`, built on gpui. Finds and binds chargers, and follows several at once |
+| [`gui`](crates/gui) | A desktop window `isdtgui`, built on gpui. Finds and binds chargers, and follows several at once |
 
 Neither front end has privileged access to the backend. Anything they do, your
 own program can do, and `crates/api/examples/custom_link.rs` shows the client
@@ -52,7 +52,7 @@ Prebuilt archives for each release are on the
 | Linux | x86-64 and arm64 |
 | Windows | x86-64 and arm64 |
 
-Each archive holds `isdtctl`, `isdt-gui` where it built, the documentation and
+Each archive holds `isdtctl`, `isdtgui` where it built, the documentation and
 a `.sha256` beside it. The window is best effort outside macOS; when it did not
 build for a platform the archive says so instead of quietly omitting it.
 
@@ -62,7 +62,7 @@ build for a platform the archive says so instead of quietly omitting it.
 cargo build --release
 ```
 
-The binaries land at `target/release/isdtctl` and `target/release/isdt-gui`.
+The binaries land at `target/release/isdtctl` and `target/release/isdtgui`.
 
 On macOS the programs need Bluetooth permission. Grant it to your terminal
 under System Settings, Privacy and Security, Bluetooth. Without it the system
@@ -160,7 +160,7 @@ than discovered the next time you type.
 ## Window
 
 ```
-isdt-gui
+isdtgui
 ```
 
 Opens on a scan, binds chargers, and keeps several connected at once, each in

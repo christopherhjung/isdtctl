@@ -1,7 +1,7 @@
 //! A desktop window for ISDT battery chargers.
 //!
 //! ```text
-//! isdt-gui
+//! isdtgui
 //! ```
 //!
 //! Scans for chargers, binds them, and keeps as many connected at once as you
