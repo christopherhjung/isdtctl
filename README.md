@@ -1,12 +1,27 @@
 # ISDT chargers
 
-Talk to ISDT battery chargers over Bluetooth Low Energy. Reimplements the
-protocol from ISDT's own Android application and exposes every command and
-query that application can send, including several its CM1620 screens never
-reach. Verified against a CM1620.
+Talk to ISDT battery chargers over Bluetooth Low Energy, from a terminal, a
+desktop window, or your own Rust program.
 
-`PROTOCOL.md` documents the wire format, and says where the Android app leaves
-something undefined.
+Live telemetry, task control, per-cell voltages and internal resistance, power
+limits, the button-press profile, BattGo smart batteries, calibration and
+firmware transfer.
+
+## Devices
+
+Only the CM1620 has been tested against real hardware. The rest share the same
+command set and should work, but nothing here has confirmed them.
+
+| Model | Status |
+|---|---|
+| CM1620 | Verified: telemetry, task control, binding, per-cell readings |
+| P30, P8 host, K4 L, X12, X16 | Same command set, untested |
+| H605 Air | Same command set, untested |
+| FD200 | Partial. Shares task control, BattGo and one-key launch, but reports telemetry differently |
+| ESC70, ESC90, BR360 | Not supported. Speed controllers rather than chargers, on a separate command range |
+
+If you try one of the untested models, `isdtctl info` is the cheapest check and
+`isdtctl --json status` the most useful thing to send back.
 
 ## Layout
 
@@ -14,29 +29,32 @@ Three crates, so the backend is usable without either front end.
 
 | Crate | What it is |
 |---|---|
-| [`api`](crates/api) | The backend: protocol, Bluetooth link, and a client generic over the transport |
-| [`cli`](crates/cli) | The command line tool `isdtctl`, built on that backend |
-| [`gui`](crates/gui) | A desktop window `isdt-gui`, built on gpui and the same backend. Finds and binds chargers, and follows several at once |
+| [`api`](crates/api) | The backend: wire protocol, Bluetooth link, and a client generic over the transport |
+| [`cli`](crates/cli) | The command line tool `isdtctl` |
+| [`gui`](crates/gui) | A desktop window `isdt-gui`, built on gpui. Finds and binds chargers, and follows several at once |
 
 Neither front end has privileged access to the backend. Anything they do, your
-own program can do, and `crates/api/examples/custom_link.rs` shows the
-client running over a transport the crate knows nothing about.
+own program can do, and `crates/api/examples/custom_link.rs` shows the client
+driving a charger over a transport the crate knows nothing about.
 
-The window needs the macOS SDK path set when building; see the
-[`gui`](crates/gui) README.
+`PROTOCOL.md` documents the wire format.
 
-## Install
+## Building
 
 ```
 cargo build --release
 ```
 
-The binary lands at `target/release/isdtctl`.
+The binaries land at `target/release/isdtctl` and `target/release/isdt-gui`.
 
-On macOS the program needs Bluetooth permission. Grant it to your terminal
+On macOS the programs need Bluetooth permission. Grant it to your terminal
 under System Settings, Privacy and Security, Bluetooth. Without it the system
-stays silent rather than refusing, so run `cargo run --example probe` to tell a
-permission problem apart from a charger that is not advertising.
+stays silent rather than refusing, so if nothing is ever found run
+`cargo run -p api --example probe` to tell a permission problem apart from a
+charger that is not advertising.
+
+The window additionally needs the macOS SDK path set at build time; see the
+[`gui`](crates/gui) README.
 
 ## Binding comes first
 
@@ -45,48 +63,20 @@ connecting, so every command needs a client identifier. There is nothing to
 look up: you invent one, the charger stores it, and it expects the same one
 back on every later connection.
 
-Put the charger into binding mode, then:
+Put the charger into binding mode from its own menu, then:
 
 ```
-isdtctl scan                      # the BINDING column shows "waiting"
-isdtctl -d <address> bind         # generates, binds, and saves the identifier
-isdtctl tokens                    # what this host has stored
+isdtctl scan                  # the BINDING column shows "waiting"
+isdtctl -d <address> bind     # generates, binds, and saves the identifier
+isdtctl tokens                # what this host has stored
 ```
 
-Identifiers are kept in `~/.config/isdtctl/tokens`. **Keep that file.** A
-charger cannot tell you its identifier back, so losing it means putting the
-charger into binding mode and binding again. Pass `--client-id` to use one from
-somewhere else, such as the phone app's database.
+Identifiers live in `~/.config/isdtctl/tokens`, shared with the window.
+**Keep that file.** A charger cannot tell you its identifier back, so losing it
+means putting the charger into binding mode and binding again. `--client-id`
+supplies one from elsewhere.
 
-If the charger was already bound by the Android app, take the identifier from
-`/sdcard/Android/data/com.isdt.hubin.isdtapp/databases/isdt.db`, table
-`devicedatatable`, column `uuid`.
-
-## Interactive session
-
-Binding and connecting cost a few seconds each time, so for anything
-exploratory open a session instead:
-
-```
-isdtctl -d <address> shell
-```
-
-It connects once, binds once, and holds the link open. Every command works
-inside it with the same syntax, with history and line editing. Add `--json` to
-any read command for that line only. `exit`, `quit` or Ctrl-D leaves; Ctrl-C
-just clears the current line. A failed command reports and returns you to the
-prompt rather than ending the session.
-
-```
-CM1620 Der Neue> status
-CM1620 Der Neue> charge --battery lipo --cells 4 --current-ma 1000
-CM1620 Der Neue> stop
-```
-
-If the session sits idle it polls the charger every twenty seconds, so a lost
-link is reported rather than discovered the next time you type.
-
-## Use
+## Command line
 
 ```
 isdtctl scan
@@ -105,32 +95,20 @@ isdtctl stop
 ```
 
 Target voltage defaults to the chemistry's own value for the task. Override it
-with `--volt-mv`. The tool applies the same range checks the app does; `--force`
-skips them.
+with `--volt-mv`. Range checks are applied by default and `--force` skips them.
 
-Requests are resent when a charger does not answer, because a charger swallows
-the first control frame after a bind and drops the occasional packet besides.
-The firmware operations and the reboot are sent exactly once instead.
-
-Settings:
+Settings, smart batteries and power supplies:
 
 ```
 isdtctl limits
 isdtctl limits --min-volt 12 --power 600
-isdtctl onekey
 isdtctl onekey --set --enabled --battery lipo --cells 4 --current-ma 2000
 isdtctl name "Bench charger"
-```
-
-Smart batteries and power supplies:
-
-```
 isdtctl battgo state
-isdtctl battgo write --current-ma 2000 --store-mv 3800 --full-mv 4200 --rest-days 3
 isdtctl smartpower info
 ```
 
-Anything the tool does not model:
+Anything the tool does not model goes out as raw bytes:
 
 ```
 isdtctl raw "e4 00"
@@ -138,39 +116,81 @@ isdtctl raw "e4 00"
 
 `--json` gives machine-readable output for every read command.
 
+### Interactive session
+
+Binding and connecting cost a few seconds each time, so for anything
+exploratory open a session instead:
+
+```
+isdtctl -d <address> shell
+```
+
+It connects once, binds once, and holds the link open. Every command works
+inside it with the same syntax, with history and line editing. Add `--json` to
+any read command for that line only. `exit`, `quit` or Ctrl-D leaves; Ctrl-C
+clears the current line. A failed command reports and returns you to the prompt
+rather than ending the session.
+
+```
+CM1620 Bench> status
+CM1620 Bench> charge --battery lipo --cells 4 --current-ma 1000
+CM1620 Bench> stop
+```
+
+An idle session polls every twenty seconds, so a lost link is reported rather
+than discovered the next time you type.
+
+## Window
+
+```
+isdt-gui
+```
+
+Opens on a scan, binds chargers, and keeps several connected at once, each in
+its own tab with its own controls. See the [`gui`](crates/gui) README.
+
 ## Library
 
 ```rust
 use std::time::Duration;
-use isdt_charger::{BatteryKind, Client, LinkType, TaskType};
+use api::{tokens, BatteryKind, Client, LinkType, TaskType};
 
-let mut client = Client::discover(None, Duration::from_secs(10)).await?;
-let state = client.work_state(0).await?;
+let client_id = tokens::parse("9102782c5bfb5047a4533d071feb6eca")?;
+let mut charger =
+    Client::discover_bound(None, Duration::from_secs(10), Default::default(), client_id).await?;
+
+let state = charger.work_state(0).await?;
 println!("{} at {}%", state.state.label(), state.capacity_percent);
 
-client.start_task(
+charger.start_task(
     0, TaskType::Charge, BatteryKind::LiPo, LinkType::SerialOnly,
     2000, 4, 4200,
 ).await?;
 ```
 
-The layers are separable. `frame` does framing and byte stuffing, `request` and
-`response` do packet encoding and decoding with no input or output of their
-own, `transport` does Bluetooth, and `Client` ties them together. If you have a
-different link to the charger, the first three are usable on their own.
+The layers are separable, so take as much or as little as you need.
 
-## Scope and risk
+| Layer | Use it when |
+|---|---|
+| `frame` | You have bytes and want framing, stuffing and checksums |
+| `request`, `response` | You have a link and want the packet layer, with no I/O |
+| `Link` | You have a serial port or a bridge and want the whole client |
+| `Client` | You want a charger on Bluetooth and no ceremony |
 
-`SetTask` starts real current through a real battery. `Calibrate6`,
-`Calibrate8`, `EraseApp` and `WriteApp` change persistent device state, and an
-interrupted firmware write can leave a charger unbootable. Nothing here
-second-guesses a request beyond the range checks noted above.
+`Client` is generic over the `Link` trait and knows nothing about Bluetooth.
+Turn the `ble` feature off to drop the Bluetooth stack entirely and keep the
+protocol and the trait.
 
-The protocol was read from a decompiled application, not from a vendor
-specification. It has not been tested against physical hardware in this
-repository; the test suite checks the encoders against the checksum literals
-baked into the app, which pins the frame layouts but cannot confirm how a given
-firmware behaves.
+## Care
 
-Speed controller packets (command words `0x51` to `0x73`) are out of scope.
-Those devices are not chargers.
+`start_task` puts real current through a real battery. The calibration and
+firmware calls change persistent device state, and an interrupted firmware
+write can leave a charger unbootable. Nothing here second-guesses a request
+beyond the range checks noted above.
+
+Two behaviours are worth knowing before building on this. A charger swallows
+the first control frame after a bind and drops the occasional packet besides,
+so requests are resent when one goes unanswered; the firmware operations and
+the reboot are sent exactly once instead. And a charger answers almost nothing
+until notifications are enabled on both of its characteristics, which the
+Bluetooth backend does for you.
