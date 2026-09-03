@@ -28,3 +28,22 @@ ble = ["dep:btleplug", "dep:futures", "dep:uuid"]
 
 [dev-dependencies]
 tokio = { workspace = true }
+
+# These examples drive real hardware, so they need the Bluetooth backend.
+# `custom_link` and `frames` deliberately do not, which is what keeps the
+# no-Bluetooth build honest.
+[[example]]
+name = "dump"
+required-features = ["ble"]
+
+[[example]]
+name = "probe"
+required-features = ["ble"]
+
+[[example]]
+name = "taskprobe"
+required-features = ["ble"]
+
+[[example]]
+name = "readme_snippet"
+required-features = ["ble"]

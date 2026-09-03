@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: Format, lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The Bluetooth backend needs D-Bus headers; the window needs the rest.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libdbus-1-dev \
+            libfontconfig-dev \
+            libwayland-dev \
+            libxkbcommon-x11-dev \
+            libxcb1-dev \
+            libvulkan-dev \
+            libssl-dev \
+            pkg-config
+
+      - run: cargo fmt --all --check
+
+      # The backend must stay usable without a Bluetooth stack.
+      - run: cargo clippy -p api --no-default-features --all-targets
+      - run: cargo clippy --workspace --all-targets
+
+      - run: cargo test --workspace
+      - run: cargo doc --workspace --no-deps
+
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libdbus-1-dev \
+            libfontconfig-dev \
+            libwayland-dev \
+            libxkbcommon-x11-dev \
+            libxcb1-dev \
+            libvulkan-dev \
+            libssl-dev \
+            pkg-config
+
+      # The window's build script runs bindgen against the system SDK, which
+      # clang cannot find on its own when only the command line tools are
+      # present.
+      - name: Point bindgen at the macOS SDK
+        if: runner.os == 'macOS'
+        run: |
+          echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS=-isysroot $(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
+
+      - run: cargo build --workspace --all-targets

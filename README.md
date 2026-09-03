@@ -41,6 +41,21 @@ driving a charger over a transport the crate knows nothing about.
 
 `PROTOCOL.md` documents the wire format.
 
+## Installing
+
+Prebuilt archives for each release are on the
+[releases page](../../releases), one per platform:
+
+| Platform | Targets |
+|---|---|
+| macOS | Apple silicon and Intel |
+| Linux | x86-64 and arm64 |
+| Windows | x86-64 and arm64 |
+
+Each archive holds `isdtctl`, `isdt-gui` where it built, the documentation and
+a `.sha256` beside it. The window is best effort outside macOS; when it did not
+build for a platform the archive says so instead of quietly omitting it.
+
 ## Building
 
 ```
@@ -253,3 +268,7 @@ Reports on `flash` are not expected and not encouraged; see above.
 Field layouts and units are documented in `PROTOCOL.md`, along with the places
 where a value's meaning is still unknown. Those gaps are the other thing a new
 device might settle.
+
+Every push is built on Linux, macOS and Windows, with formatting, lint, tests
+and docs checked, so a pull request will tell you quickly if something is off.
+Pushing a `v*` tag builds all six targets and opens a draft release.
