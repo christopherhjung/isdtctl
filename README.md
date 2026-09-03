@@ -7,6 +7,8 @@ Live telemetry, task control, per-cell voltages and internal resistance, power
 limits, the button-press profile, BattGo smart batteries, calibration and
 firmware transfer.
 
+![gui.png](gui.png)
+
 ## Devices
 
 Only the CM1620 has been tested against real hardware. The rest share the same
