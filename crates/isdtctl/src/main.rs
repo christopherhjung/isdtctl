@@ -4,16 +4,16 @@ use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use clap::{Args, Parser, Subcommand};
+use isdt_charger::ble::{self, WriteChannel};
 use isdt_charger::client::{default_poll_cycle, Telemetry, POLL_INTERVAL};
 use isdt_charger::request::WRITE_APP_BLOCK;
 use isdt_charger::response::Response;
 use isdt_charger::tokens;
-use isdt_charger::transport::{self, WriteChannel};
 use isdt_charger::types::{
     BatteryKind, CalibrationMode, LinkType, TaskType, CM1620_CELLS, MAX_INPUT_POWER_W,
     MIN_INPUT_VOLT_V, WORK_CURRENT_MA,
 };
-use isdt_charger::{Client, Request};
+use isdt_charger::{BleClient, Request};
 
 #[derive(Parser)]
 #[command(
@@ -329,8 +329,8 @@ async fn main() -> Result<()> {
 
     // Find the charger before deciding what to present, so the identifier can
     // be looked up by the peripheral the scan actually matched.
-    let adapter = transport::adapter().await?;
-    let device = transport::find(
+    let adapter = ble::adapter().await?;
+    let device = ble::find(
         &adapter,
         cli.device.as_deref(),
         Duration::from_secs(cli.scan_timeout),
@@ -360,7 +360,7 @@ async fn main() -> Result<()> {
         }
     };
 
-    let mut client = Client::connect(&device, write_channel(cli.wide))
+    let mut client = BleClient::connect(&device, write_channel(cli.wide))
         .await
         .context("could not connect")?;
     client.set_timeout(Duration::from_millis(cli.timeout));
@@ -402,8 +402,8 @@ fn run_tokens(store: &tokens::Store, path: &std::path::Path) -> Result<()> {
 }
 
 async fn run_scan(cli: &Cli) -> Result<()> {
-    let adapter = transport::adapter().await?;
-    let found = transport::scan(&adapter, Duration::from_secs(cli.scan_timeout)).await?;
+    let adapter = ble::adapter().await?;
+    let found = ble::scan(&adapter, Duration::from_secs(cli.scan_timeout)).await?;
     if found.is_empty() {
         println!("No ISDT charger found.");
         return Ok(());
@@ -440,7 +440,7 @@ async fn run(
     cli: &Cli,
     command: &Command,
     json: bool,
-    client: &mut Client,
+    client: &mut BleClient,
     device: &isdt_charger::Discovered,
     store: &tokens::Store,
     token_path: &std::path::Path,
@@ -730,18 +730,22 @@ async fn run(
             }
             client.send(&Request::Raw { data }).await?;
             let deadline = tokio::time::Instant::now() + Duration::from_millis(*listen);
-            while let Some(frame) = client
-                .next_frame(deadline.saturating_duration_since(tokio::time::Instant::now()))
-                .await
-            {
-                println!("{}", serde_json::to_string(&frame)?);
+            loop {
+                let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+                if left.is_zero() {
+                    break;
+                }
+                match client.next_frame(left).await? {
+                    Some(frame) => println!("{}", serde_json::to_string(&frame)?),
+                    None => break,
+                }
             }
         }
     }
     Ok(())
 }
 
-async fn start(client: &mut Client, task: TaskType, args: &TaskArgs) -> Result<()> {
+async fn start(client: &mut BleClient, task: TaskType, args: &TaskArgs) -> Result<()> {
     let volt_mv = match args.volt_mv {
         Some(mv) => mv,
         None => match task {
@@ -803,7 +807,7 @@ async fn start(client: &mut Client, task: TaskType, args: &TaskArgs) -> Result<(
     Ok(())
 }
 
-async fn watch(client: &mut Client, channel: u8, interval: Duration, json: bool) -> Result<()> {
+async fn watch(client: &mut BleClient, channel: u8, interval: Duration, json: bool) -> Result<()> {
     let cycle = default_poll_cycle(channel);
     let mut index = 0usize;
     let mut shutdown = std::pin::pin!(tokio::signal::ctrl_c());
@@ -1020,7 +1024,7 @@ const KEEPALIVE: Duration = Duration::from_secs(20);
 /// Runs commands against one connection until the user leaves.
 async fn shell(
     cli: &Cli,
-    client: &mut Client,
+    client: &mut BleClient,
     device: &isdt_charger::Discovered,
     store: &tokens::Store,
     token_path: &std::path::Path,

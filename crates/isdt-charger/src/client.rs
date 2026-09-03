@@ -14,8 +14,8 @@ use crate::response::{
     Electrical, HardwareInfo, InnerResistance, LimitParameters, OneKeyLaunch, Response,
     Temperature, WorkState,
 };
-use crate::tokens::ClientId;
-use crate::transport::{self, Discovered, Transport, TransportError, WriteChannel};
+
+use crate::link::{Link, LinkError};
 use crate::types::{BatteryKind, LinkType, TaskType};
 
 /// How long to wait for a reply before giving up.
@@ -52,7 +52,7 @@ pub fn default_poll_cycle(channel: u8) -> Vec<Request> {
 pub enum ClientError {
     /// The link failed.
     #[error(transparent)]
-    Transport(#[from] TransportError),
+    Link(#[from] LinkError),
 
     /// No reply arrived before the deadline.
     #[error("no reply to command 0x{command:02X} within {timeout:?}")]
@@ -105,20 +105,36 @@ pub enum ClientError {
     BadImageLength(usize),
 }
 
-/// A connected charger.
-pub struct Client {
-    transport: Transport,
+#[cfg(feature = "ble")]
+impl From<crate::BleError> for ClientError {
+    fn from(error: crate::BleError) -> Self {
+        ClientError::Link(error.into())
+    }
+}
+
+/// A charger, over whatever link you hand it.
+///
+/// Every method here is transport agnostic. For Bluetooth, build one with
+/// [`Client::discover_bound`] or [`Client::connect_bound`]; for anything else,
+/// implement [`Link`] and use [`Client::new`].
+pub struct Client<L> {
+    link: L,
     timeout: Duration,
     pending: VecDeque<Response>,
 }
 
-impl Client {
-    /// Scans for a charger and connects to the first match.
+#[cfg(feature = "ble")]
+impl Client<crate::BleLink> {
+    /// Scans for a charger and connects to the first match, without binding.
     ///
     /// `needle` matches case-insensitively against the advertised name and the
     /// peripheral identifier. Pass `None` to take the strongest signal.
+    ///
+    /// A charger drops an unbound client after about five seconds and answers
+    /// almost nothing in the meantime, so prefer [`Client::discover_bound`]
+    /// unless you are deliberately probing.
     pub async fn discover(needle: Option<&str>, timeout: Duration) -> Result<Self, ClientError> {
-        Self::discover_on(needle, timeout, WriteChannel::default()).await
+        Self::discover_on(needle, timeout, crate::WriteChannel::default()).await
     }
 
     /// Scans for a charger and connects on a chosen write channel.
@@ -128,58 +144,83 @@ impl Client {
     pub async fn discover_on(
         needle: Option<&str>,
         timeout: Duration,
-        channel: WriteChannel,
+        channel: crate::WriteChannel,
     ) -> Result<Self, ClientError> {
-        let adapter = transport::adapter().await?;
-        let device = transport::find(&adapter, needle, timeout).await?;
+        let adapter = crate::ble::adapter().await?;
+        let device = crate::ble::find(&adapter, needle, timeout).await?;
         Self::connect(&device, channel).await
     }
 
-    /// Connects to a charger found by [`transport::scan`].
-    ///
-    /// This does not bind. A charger drops an unbound client after about five
-    /// seconds and answers almost nothing in the meantime, so prefer
-    /// [`Client::connect_bound`] unless you are deliberately probing.
-    pub async fn connect(device: &Discovered, channel: WriteChannel) -> Result<Self, ClientError> {
-        Ok(Self {
-            transport: Transport::connect(device, channel).await?,
-            timeout: DEFAULT_TIMEOUT,
-            pending: VecDeque::new(),
-        })
+    /// Connects to a charger found by [`crate::ble::scan`], without binding.
+    pub async fn connect(
+        device: &crate::Discovered,
+        channel: crate::WriteChannel,
+    ) -> Result<Self, ClientError> {
+        Ok(Self::new(crate::BleLink::connect(device, channel).await?))
     }
 
     /// Connects and immediately presents a client identifier.
     ///
-    /// The Android app binds on every connection, between enabling
+    /// The vendor application binds on every connection, between enabling
     /// notifications and its first query, and a charger will not answer much
     /// until it has. Without this the link is dropped mid-conversation.
     pub async fn connect_bound(
-        device: &Discovered,
-        channel: WriteChannel,
-        client_id: ClientId,
+        device: &crate::Discovered,
+        channel: crate::WriteChannel,
+        client_id: crate::ClientId,
     ) -> Result<Self, ClientError> {
         let mut client = Self::connect(device, channel).await?;
         client.bind(client_id).await?;
         Ok(client)
     }
 
-    /// Scans for a charger, connects and binds in one step.
+    /// Scans, connects and binds in one step. This is the usual entry point.
     pub async fn discover_bound(
         needle: Option<&str>,
         timeout: Duration,
-        channel: WriteChannel,
-        client_id: ClientId,
+        channel: crate::WriteChannel,
+        client_id: crate::ClientId,
     ) -> Result<Self, ClientError> {
-        let adapter = transport::adapter().await?;
-        let device = transport::find(&adapter, needle, timeout).await?;
+        let adapter = crate::ble::adapter().await?;
+        let device = crate::ble::find(&adapter, needle, timeout).await?;
         Self::connect_bound(&device, channel, client_id).await
+    }
+
+    /// Closes the Bluetooth link.
+    pub async fn disconnect(self) -> Result<(), ClientError> {
+        self.link.disconnect().await?;
+        Ok(())
+    }
+}
+
+impl<L: Link> Client<L> {
+    /// Wraps any link in a client.
+    ///
+    /// Use this when you have implemented [`Link`] for your own transport.
+    pub fn new(link: L) -> Self {
+        Self {
+            link,
+            timeout: DEFAULT_TIMEOUT,
+            pending: VecDeque::new(),
+        }
+    }
+
+    /// The link underneath, for transport-specific operations.
+    pub fn link(&self) -> &L {
+        &self.link
+    }
+
+    /// Gives the link back.
+    pub fn into_link(self) -> L {
+        self.link
     }
 
     /// Presents a client identifier and returns once the charger accepts it.
     ///
-    /// A charger that already holds a different token refuses, and the only
-    /// way back is to put it into binding mode and bind again.
-    pub async fn bind(&mut self, client_id: ClientId) -> Result<(), ClientError> {
+    /// A charger only accepts a new identifier while it is in binding mode.
+    /// One that already holds a different identifier refuses, and the only way
+    /// back is to put it into binding mode and bind again.
+    pub async fn bind(&mut self, client_id: [u8; 16]) -> Result<(), ClientError> {
         match self.call(Request::Bind { client_id }).await? {
             Response::Bind { bound: true } => Ok(()),
             Response::Bind { bound: false } => Err(ClientError::BindRefused),
@@ -194,7 +235,7 @@ impl Client {
 
     /// Sends a request without waiting for a reply.
     pub async fn send(&self, request: &Request) -> Result<(), ClientError> {
-        Ok(self.transport.send(&request.data()).await?)
+        Ok(self.link.send(&request.data()).await?)
     }
 
     /// Sends a request and waits for the frame that answers it.
@@ -225,7 +266,7 @@ impl Client {
     async fn call_once(&mut self, request: Request) -> Result<Response, ClientError> {
         let command = request.command_word();
         let want = request.reply_word();
-        self.transport.send(&request.data()).await?;
+        self.link.send(&request.data()).await?;
 
         let deadline = tokio::time::Instant::now() + self.timeout;
         loop {
@@ -236,7 +277,7 @@ impl Client {
                     timeout: self.timeout,
                 });
             }
-            let Some(frame) = self.transport.recv_timeout(left).await else {
+            let Some(frame) = self.link.recv(left).await? else {
                 return Err(ClientError::Timeout {
                     command,
                     timeout: self.timeout,
@@ -255,22 +296,24 @@ impl Client {
     }
 
     /// Waits for the next unsolicited frame, up to `timeout`.
-    pub async fn next_frame(&mut self, timeout: Duration) -> Option<Response> {
+    ///
+    /// Frames queued while waiting for a reply come out first. `Ok(None)` means
+    /// nothing arrived before the deadline.
+    pub async fn next_frame(&mut self, timeout: Duration) -> Result<Option<Response>, ClientError> {
         if let Some(queued) = self.pending.pop_front() {
-            return Some(queued);
+            return Ok(Some(queued));
         }
-        let frame = self.transport.recv_timeout(timeout).await?;
-        Response::parse(&frame)
+        Ok(self
+            .link
+            .recv(timeout)
+            .await?
+            .as_deref()
+            .and_then(Response::parse))
     }
 
     /// Takes every frame received while waiting for replies.
     pub fn take_pending(&mut self) -> Vec<Response> {
         self.pending.drain(..).collect()
-    }
-
-    /// Closes the link.
-    pub async fn disconnect(self) -> Result<(), ClientError> {
-        Ok(self.transport.disconnect().await?)
     }
 
     // ---- typed queries ---------------------------------------------------

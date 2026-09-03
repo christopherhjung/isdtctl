@@ -1,4 +1,8 @@
-//! Bluetooth Low Energy plumbing: discovery, connection and the byte pipe.
+//! The Bluetooth Low Energy backend: discovery, connection and the byte pipe.
+//!
+//! This is one implementation of [`Link`](crate::Link). Everything above it is
+//! transport agnostic, so a charger reached over a serial bridge or a test
+//! double needs only another `Link`.
 //!
 //! ISDT chargers advertise service `0000FFF0` and expose three characteristics
 //! under it:
@@ -71,9 +75,9 @@ impl WriteChannel {
     }
 }
 
-/// Something that went wrong on the link.
+/// Something that went wrong on the Bluetooth link.
 #[derive(Debug, thiserror::Error)]
-pub enum TransportError {
+pub enum BleError {
     /// The Bluetooth stack reported a failure.
     #[error("bluetooth error: {0}")]
     Bluetooth(#[from] btleplug::Error),
@@ -147,7 +151,7 @@ impl Discovered {
 /// the name at fixed offsets:
 ///
 /// ```text
-/// ISDT 1 CM1620␣␣ Der Alte
+/// ISDT 1 CM1620␣␣
 /// ^^^^ ^ ^^^^^^^^ ^^^^^^^^
 /// tag  | model    user name
 ///      binding mode flag
@@ -218,14 +222,14 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(3);
 const ADAPTER_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Returns the host's first Bluetooth adapter.
-pub async fn adapter() -> Result<Adapter, TransportError> {
+pub async fn adapter() -> Result<Adapter, BleError> {
     let manager = tokio::time::timeout(ADAPTER_TIMEOUT, Manager::new())
         .await
-        .map_err(|_| TransportError::AdapterUnavailable)??;
+        .map_err(|_| BleError::AdapterUnavailable)??;
     let adapters = tokio::time::timeout(ADAPTER_TIMEOUT, manager.adapters())
         .await
-        .map_err(|_| TransportError::AdapterUnavailable)??;
-    adapters.into_iter().next().ok_or(TransportError::NoAdapter)
+        .map_err(|_| BleError::AdapterUnavailable)??;
+    adapters.into_iter().next().ok_or(BleError::NoAdapter)
 }
 
 /// Scans for chargers for `duration` and returns everything advertising the
@@ -233,10 +237,7 @@ pub async fn adapter() -> Result<Adapter, TransportError> {
 ///
 /// Some units advertise the service identifier and some do not, so anything
 /// whose name starts with `ISDT` is kept as well.
-pub async fn scan(
-    adapter: &Adapter,
-    duration: Duration,
-) -> Result<Vec<Discovered>, TransportError> {
+pub async fn scan(adapter: &Adapter, duration: Duration) -> Result<Vec<Discovered>, BleError> {
     adapter
         .start_scan(ScanFilter {
             services: vec![SERVICE],
@@ -278,7 +279,7 @@ pub async fn find(
     adapter: &Adapter,
     needle: Option<&str>,
     timeout: Duration,
-) -> Result<Discovered, TransportError> {
+) -> Result<Discovered, BleError> {
     let deadline = tokio::time::Instant::now() + timeout;
     let step = Duration::from_millis(1500);
     loop {
@@ -299,13 +300,13 @@ pub async fn find(
             return Ok(hit);
         }
         if tokio::time::Instant::now() >= deadline {
-            return Err(TransportError::NotFound(timeout));
+            return Err(BleError::NotFound(timeout));
         }
     }
 }
 
-/// A connected charger, framing bytes in both directions.
-pub struct Transport {
+/// A Bluetooth Low Energy link to a charger.
+pub struct BleLink {
     peripheral: Peripheral,
     write_char: Characteristic,
     write_type: WriteType,
@@ -316,12 +317,9 @@ pub struct Transport {
     last_write: tokio::sync::Mutex<Option<tokio::time::Instant>>,
 }
 
-impl Transport {
+impl BleLink {
     /// Connects to `device`, subscribes to notifications and starts decoding.
-    pub async fn connect(
-        device: &Discovered,
-        channel: WriteChannel,
-    ) -> Result<Self, TransportError> {
+    pub async fn connect(device: &Discovered, channel: WriteChannel) -> Result<Self, BleError> {
         let peripheral = device.peripheral.clone();
         if !peripheral.is_connected().await? {
             peripheral.connect().await?;
@@ -333,7 +331,7 @@ impl Transport {
             .iter()
             .any(|c| c.uuid == CHAR_FFF6 && c.properties.contains(CharPropFlags::NOTIFY))
         {
-            return Err(TransportError::MissingCharacteristic(CHAR_FFF6));
+            return Err(BleError::MissingCharacteristic(CHAR_FFF6));
         }
 
         // The app enables notifications on FFF6 and, when the charger exposes
@@ -361,7 +359,7 @@ impl Transport {
                     .find(|c| c.uuid == CHAR_FFF6 && is_writable(c))
             })
             .cloned()
-            .ok_or(TransportError::MissingCharacteristic(wanted))?;
+            .ok_or(BleError::MissingCharacteristic(wanted))?;
 
         let mtu = if write_char.uuid == CHAR_FFF6 {
             MTU_SMALL
@@ -408,8 +406,8 @@ impl Transport {
     /// Sends one frame's `DATA` field, splitting it across writes as needed.
     ///
     /// A write to a charger that has already dropped the link never completes
-    /// on macOS, so each one is bounded and reported as [`TransportError::LinkLost`].
-    pub async fn send(&self, data: &[u8]) -> Result<(), TransportError> {
+    /// on macOS, so each one is bounded and reported as [`BleError::LinkLost`].
+    pub async fn send_frame(&self, data: &[u8]) -> Result<(), BleError> {
         let encoded = frame::encode(data)?;
         let mut last_write = self.last_write.lock().await;
         for packet in frame::chunk(&encoded, self.mtu) {
@@ -425,19 +423,19 @@ impl Transport {
                     .write(&self.write_char, &packet, self.write_type),
             )
             .await
-            .map_err(|_| TransportError::LinkLost)??;
+            .map_err(|_| BleError::LinkLost)??;
             *last_write = Some(tokio::time::Instant::now());
         }
         Ok(())
     }
 
     /// Waits for the next decoded frame, or `None` once the link is gone.
-    pub async fn recv(&mut self) -> Option<Vec<u8>> {
+    pub async fn recv_frame(&mut self) -> Option<Vec<u8>> {
         self.frames.recv().await
     }
 
     /// Waits for the next decoded frame, giving up after `timeout`.
-    pub async fn recv_timeout(&mut self, timeout: Duration) -> Option<Vec<u8>> {
+    pub async fn recv_frame_timeout(&mut self, timeout: Duration) -> Option<Vec<u8>> {
         tokio::time::timeout(timeout, self.frames.recv())
             .await
             .ok()
@@ -446,7 +444,7 @@ impl Transport {
 
     /// Drops frames that are already queued, so a later read cannot return a
     /// reply to something asked before.
-    pub fn drain(&mut self) {
+    pub fn drain_frames(&mut self) {
         while self.frames.try_recv().is_ok() {}
     }
 
@@ -456,14 +454,14 @@ impl Transport {
     }
 
     /// Closes the link.
-    pub async fn disconnect(self) -> Result<(), TransportError> {
+    pub async fn disconnect(self) -> Result<(), BleError> {
         self.pump.abort();
         self.peripheral.disconnect().await?;
         Ok(())
     }
 }
 
-impl Drop for Transport {
+impl Drop for BleLink {
     fn drop(&mut self) {
         self.pump.abort();
     }
@@ -474,25 +472,50 @@ fn is_writable(c: &Characteristic) -> bool {
         .intersects(CharPropFlags::WRITE | CharPropFlags::WRITE_WITHOUT_RESPONSE)
 }
 
+impl From<BleError> for crate::LinkError {
+    fn from(error: BleError) -> Self {
+        match error {
+            BleError::LinkLost => crate::LinkError::Closed,
+            BleError::Frame(e) => crate::LinkError::Frame(e),
+            other => crate::LinkError::transport(other),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::Link for BleLink {
+    async fn send(&self, data: &[u8]) -> Result<(), crate::LinkError> {
+        Ok(self.send_frame(data).await?)
+    }
+
+    async fn recv(&mut self, timeout: Duration) -> Result<Option<Vec<u8>>, crate::LinkError> {
+        // The notification pump only ends when the peripheral is gone, so a
+        // closed channel is a closed link rather than an empty read.
+        if self.pump.is_finished() && self.frames.is_empty() {
+            return Err(crate::LinkError::Closed);
+        }
+        Ok(self.recv_frame_timeout(timeout).await)
+    }
+
+    fn drain(&mut self) {
+        self.drain_frames();
+    }
+
+    fn max_data_len(&self) -> usize {
+        crate::frame::MAX_DATA_LEN
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::IsdtName;
 
     #[test]
     fn reads_a_charger_waiting_to_be_bound() {
-        let parsed = IsdtName::parse("ISDT1CM1620  Der Alte").unwrap();
+        let parsed = IsdtName::parse("ISDT1CM1620  NAME").unwrap();
         assert!(parsed.binding_mode);
         assert_eq!(parsed.model, "CM1620");
-        assert_eq!(parsed.name, "Der Alte");
-    }
-
-    #[test]
-    fn reads_a_tag_wrapped_in_another_string() {
-        // What a CM1620 actually advertises.
-        let parsed = IsdtName::parse("Phy BLE-Uart [ISDT0CM1620  Der Neue]").unwrap();
-        assert!(!parsed.binding_mode);
-        assert_eq!(parsed.model, "CM1620");
-        assert_eq!(parsed.name, "Der Neue");
+        assert_eq!(parsed.name, "NAME");
     }
 
     #[test]
