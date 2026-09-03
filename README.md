@@ -10,16 +10,20 @@ something undefined.
 
 ## Layout
 
-Two crates, so the backend is usable without the terminal.
+Three crates, so the backend is usable without either front end.
 
 | Crate | What it is |
 |---|---|
 | [`isdt-charger`](crates/isdt-charger) | The backend: protocol, Bluetooth link, and a client generic over the transport |
 | [`isdtctl`](crates/isdtctl) | The command line tool, built on that backend |
+| [`isdt-gui`](crates/isdt-gui) | A desktop window, built on gpui and the same backend. Finds and binds chargers, and follows several at once |
 
-Nothing in the tool has privileged access to the backend. Anything `isdtctl`
-does, your own program can do, and `crates/isdt-charger/examples/custom_link.rs`
-shows the client running over a transport the crate knows nothing about.
+Neither front end has privileged access to the backend. Anything they do, your
+own program can do, and `crates/isdt-charger/examples/custom_link.rs` shows the
+client running over a transport the crate knows nothing about.
+
+The window needs the macOS SDK path set when building; see the
+[`isdt-gui`](crates/isdt-gui) README.
 
 ## Install
 

@@ -512,10 +512,20 @@ mod tests {
 
     #[test]
     fn reads_a_charger_waiting_to_be_bound() {
-        let parsed = IsdtName::parse("ISDT1CM1620  NAME").unwrap();
+        let parsed = IsdtName::parse("ISDT1CM1620  Bench").unwrap();
         assert!(parsed.binding_mode);
         assert_eq!(parsed.model, "CM1620");
-        assert_eq!(parsed.name, "NAME");
+        assert_eq!(parsed.name, "Bench");
+    }
+
+    /// The shape a CM1620 actually advertises: the tag is wrapped inside the
+    /// Bluetooth module's own name rather than starting at offset zero.
+    #[test]
+    fn reads_a_tag_wrapped_in_another_string() {
+        let parsed = IsdtName::parse("Phy BLE-Uart [ISDT0CM1620  Bench]").unwrap();
+        assert!(!parsed.binding_mode);
+        assert_eq!(parsed.model, "CM1620");
+        assert_eq!(parsed.name, "Bench");
     }
 
     #[test]

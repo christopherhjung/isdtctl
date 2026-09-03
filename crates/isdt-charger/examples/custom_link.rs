@@ -121,7 +121,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  accepted");
 
     // Anything the crate does not model still goes out as raw bytes.
-    charger.send(&Request::Raw { data: vec![0xE4, 0x00] }).await?;
+    charger
+        .send(&Request::Raw {
+            data: vec![0xE4, 0x00],
+        })
+        .await?;
     Ok(())
 }
 
