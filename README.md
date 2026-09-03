@@ -22,8 +22,8 @@ command set and should work, but nothing here has confirmed them.
 | FD200 | Partial. Shares task control, BattGo and one-key launch, but reports telemetry differently |
 | ESC70, ESC90, BR360 | Not supported. Speed controllers rather than chargers, on a separate command range |
 
-If you try one of the untested models, `isdtctl info` is the cheapest check and
-`isdtctl --json status` the most useful thing to send back.
+If you have one of the untested models, see [Contributing](#contributing); a
+single run settles more than any amount of reading.
 
 ## Layout
 
@@ -185,14 +185,71 @@ protocol and the trait.
 
 ## Care
 
-`start_task` puts real current through a real battery. The calibration and
-firmware calls change persistent device state, and an interrupted firmware
-write can leave a charger unbootable. Nothing here second-guesses a request
-beyond the range checks noted above.
+`start_task` puts real current through a real battery. Nothing here
+second-guesses a request beyond the range checks noted above.
 
-Two behaviours are worth knowing before building on this. A charger swallows
-the first control frame after a bind and drops the occasional packet besides,
-so requests are resent when one goes unanswered; the firmware operations and
-the reboot are sent exactly once instead. And a charger answers almost nothing
-until notifications are enabled on both of its characteristics, which the
-Bluetooth backend does for you.
+### `flash` has never been run against hardware
+
+`isdtctl flash` is the one command that can permanently break a charger, and it
+is the one command nothing here has ever executed on a real device. The frame
+layouts are checked, but the sequence has only ever been reasoned about:
+
+```
+enter bootloader → erase region → write 128 byte blocks → verify checksum
+```
+
+Every step of that is untested, including whether the charger recovers if it is
+interrupted part way through. There is no known way to recover a charger left
+without working firmware other than whatever the manufacturer provides. The
+`--address` you pass is not validated against anything, and an image written to
+the wrong offset is the same failure.
+
+Do not use it on a charger you are not prepared to lose. `--yes` is required
+for exactly this reason.
+
+`calibrate` is also untested, though the worst case is milder: wrong
+calibration constants make readings inaccurate, and
+`isdtctl calibrate --restore` puts the factory set back.
+
+Everything else in this README has been exercised against a CM1620.
+
+### Two behaviours worth knowing
+
+A charger swallows the first control frame after a bind and drops the
+occasional packet besides, so requests are resent when one goes unanswered. The
+firmware operations and the reboot are sent exactly once instead, since
+repeating those is not safe.
+
+And a charger answers almost nothing until notifications are enabled on both of
+its characteristics, which the Bluetooth backend does for you.
+
+## Contributing
+
+The most useful thing anyone can add here is a device other than a CM1620.
+Everything in the table above beyond that one model is inference from a shared
+command set, and a single run tells more than any amount of reading.
+
+If you have one, bind it and send the output of:
+
+```
+isdtctl info
+isdtctl --json status
+```
+
+That is enough to say whether a model works. If something is wrong, these show
+what the charger actually sent:
+
+```
+cargo run -p api --example dump -- <address> <client-id>
+```
+
+It walks the GATT table, subscribes to everything, sends each query in turn and
+prints every byte that comes back, decoded where possible. `ISDT_GUI_TRACE=1`
+does the same for the window's side of things.
+
+Worth reporting even when it works, so the table can stop saying untested.
+Reports on `flash` are not expected and not encouraged; see above.
+
+Field layouts and units are documented in `PROTOCOL.md`, along with the places
+where a value's meaning is still unknown. Those gaps are the other thing a new
+device might settle.
