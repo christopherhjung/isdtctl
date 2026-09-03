@@ -117,6 +117,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "api"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "btleplug",
+ "futures",
+ "serde",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "ar_archive_writer"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1000,6 +1014,20 @@ name = "clap_lex"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
+
+[[package]]
+name = "cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "api",
+ "clap",
+ "rustyline",
+ "serde_json",
+ "shell-words",
+ "tokio",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "clipboard-win"
@@ -2567,6 +2595,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12101ecc8225ea6d675bc70263074eab6169079621c2186fe0c66590b2df9681"
 
 [[package]]
+name = "gui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "api",
+ "futures",
+ "gpui",
+ "tokio",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3034,45 +3073,6 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
-
-[[package]]
-name = "isdt-charger"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "btleplug",
- "futures",
- "serde",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "isdt-gui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "futures",
- "gpui",
- "isdt-charger",
- "tokio",
-]
-
-[[package]]
-name = "isdtctl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "isdt-charger",
- "rustyline",
- "serde_json",
- "shell-words",
- "tokio",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "itertools"

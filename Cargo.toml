@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/isdt-charger", "crates/isdt-gui", "crates/isdtctl"]
+members = ["crates/api", "crates/gui", "crates/cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,7 +10,7 @@ repository = "https://github.com/anabrid/isdt-charger"
 rust-version = "1.87"
 
 [workspace.dependencies]
-isdt-charger = { version = "0.1.0", path = "crates/isdt-charger" }
+api = { version = "0.1.0", path = "crates/api" }
 
 anyhow = "1"
 async-trait = "0.1"
