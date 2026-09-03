@@ -1,4 +1,4 @@
-# ISDT chargers
+# ISDT Control
 
 Talk to ISDT battery chargers over Bluetooth Low Energy, from a terminal, a
 desktop window, or your own Rust program.
