@@ -1,0 +1,30 @@
+[package]
+name = "api"
+description = "Talk to ISDT battery chargers: the wire protocol, a Bluetooth Low Energy backend, and a transport-agnostic client"
+keywords = ["isdt", "charger", "battery", "bluetooth", "lipo"]
+categories = ["hardware-support", "asynchronous", "encoding"]
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+btleplug = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, optional = true }
+
+[features]
+default = ["ble"]
+# The Bluetooth Low Energy backend and its token store. Turn it off to keep
+# the protocol and the Link trait without pulling in a Bluetooth stack.
+ble = ["dep:btleplug", "dep:futures", "dep:uuid"]
+
+[dev-dependencies]
+tokio = { workspace = true }
